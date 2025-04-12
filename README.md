@@ -1,5 +1,8 @@
 
+MCP Project – Math Computation Platform with Tool-Based Prompting
+
 This project demonstrates an optimized prompt-based system for structured problem solving using a Math Agent that leverages step-by-step reasoning and function-based tool usage.
+
 🔍 Objective
 
 The goal of this project is to build and evaluate a structured prompt system that enables a language model to:
@@ -17,6 +20,7 @@ The goal of this project is to build and evaluate a structured prompt system tha
 
 🧠 Prompt Structure
 
+
 Each prompt must guide the agent to:
 
     Start with REASONING: Explain the logic behind each decision in plain English.
@@ -28,12 +32,19 @@ Each prompt must guide the agent to:
     Return FINAL_ANSWER only after all reasoning and calculations are complete.
 
     Handle errors or ambiguities gracefully using ERROR.
+    
 
 📦 Response Format
 
 {
+
   "reasoning": "Explain why this tool or step is necessary",
+  
   "reasoning_type": "e.g. arithmetic, lookup, planning, error_handling",
+  
   "action": "FUNCTION_CALL: tool_name|input_values",
+  
   "self_check": "Verify that the tool is being used correctly and that the expected output makes sense"
+  
 }
+
