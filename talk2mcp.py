@@ -6,6 +6,7 @@ import asyncio
 from google import genai
 from concurrent.futures import TimeoutError
 from functools import partial
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -14,7 +15,7 @@ load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
-max_iterations = 4
+max_iterations = 5
 last_response = None
 iteration = 0
 iteration_response = []
@@ -117,33 +118,67 @@ async def main():
                 
                 print("Created system prompt...")
                 
-                system_prompt = f"""You are a math agent solving problems in iterations. You have access to various mathematical tools.
+                system_prompt = f"""You are a math agent solving problems step-by-step using tools one step at a time. You must first reason through the problem in natural language, then decide which tool to use.
 
-Available tools:
+You have access to the following tools: 
 {tools_description}
 
-You must respond with EXACTLY ONE line in one of these formats (no additional text):
-1. For function calls:
-   FUNCTION_CALL: function_name|param1|param2|...
-   
-2. For final answers:
-   FINAL_ANSWER: [number]
 
-Important:
-- When a function returns multiple values, you need to process all of them
-- Only give FINAL_ANSWER when you have completed all necessary calculations
-- Do not repeat function calls with the same parameters
+Rules:
 
-Examples:
-- FUNCTION_CALL: add|5|3
-- FUNCTION_CALL: strings_to_chars_to_int|INDIA
-- FINAL_ANSWER: [42]
+    Only one response at a time
+    
+    Always begin with REASONING before making a FUNCTION_CALL.
 
-DO NOT include any explanations or additional text.
-Your entire response should be a single line starting with either FUNCTION_CALL: or FINAL_ANSWER:"""
+    Each FUNCTION_CALL must be preceded by REASONING explaining why the tool is needed.
 
-                query = """Find the ASCII values of characters in INDIA and then return sum of exponentials of those values. 
-                Then send an email using gmail with subject Final result and message as FINAL_ANSWER full response text to the recipient chanthu.nair.010@gmail.com.
+    Do not repeat function calls with the same parameters.
+
+    Only return FINAL_ANSWER when all reasoning and calculations are complete.
+
+    If unsure or input is ambiguous, state so with ERROR and describe your fallback.
+
+Response Format:
+
+
+{{
+    "reasoning" : "To solve this, I need to convert 'INDIA' to ASCII values. FUNCTION_CALL: strings_to_chars_to_int|INDIA",
+    "reasoning_type": "e.g. arithmetic, lookup, planning",
+    "action" : "FUNCTION_CALL: strings_to_chars_to_int|INDIA",
+    "self_check": "This function should return a list of integers corresponding to the ASCII values of the characters in the string INDIA."
+}}
+
+Example Response:
+
+{{
+    "reasoning" : "To solve this, I need to convert 'INDIA' to ASCII values. FUNCTION_CALL: strings_to_chars_to_int|INDIA.",
+    "reasoning_type": "lookup",
+    "action" : "FUNCTION_CALL: strings_to_chars_to_int|INDIA",
+    "self_check": "This function should return a list of integers corresponding to the ASCII values of the characters in the string INDIA."
+}}
+{{
+    "reasoning" : "Now I will calculate the exponentials of each value and sum them.",
+    "reasoning_type": "arithmetic",
+    "action" : "FUNCTION_CALL: int_list_to_exponential_sum|[73, 78, 68, 73, 65]",
+    "self_check": "This function should take the list of ASCII values and calculate the sum of exponentials. The result will be a very large number.."
+}}
+{{
+    "reasoning" : "All steps are complete. Returning the final result.",
+    "reasoning_type": "planning",
+    "action" : "FINAL_ANSWER: [12345]",
+    "self_check": "The final answer is the exponential sum of the ASCII values of the characters in INDIA."
+}}
+{{
+  "reasoning": "The input provided is an empty string, so I cannot compute ASCII values.",
+  "reasoning_type": "error_handling",
+  "action": "ERROR: Input is empty. Please provide a valid string.",
+  "self_check": "No tool call will be made until valid input is received."
+}}
+"""
+
+                query = """Find the ASCII values of characters in INDIA and then return sum of exponentials of those values.
+Then open Pages and insert a rectangle.
+Finally add the "FINAL_ANSWER" text into Pages.
                 """
                 print("Starting iteration loop...")
                 
@@ -161,25 +196,26 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                     # Get model's response with timeout
                     print("Preparing to generate LLM response...")
                     prompt = f"{system_prompt}\n\nQuery: {current_query}"
+                    # print(prompt)
                     try:
                         response = await generate_with_timeout(client, prompt)
                         response_text = response.text.strip()
                         print(f"LLM Response: {response_text}")
                         
-                        # Find the FUNCTION_CALL line in the response
-                        for line in response_text.split('\n'):
-                            line = line.strip()
-                            if line.startswith("FUNCTION_CALL:"):
-                                response_text = line
-                                break
+                        response_text = response_text.replace("`", "")
+                        response_text = response_text.replace("json", "")
+                        response_text = json.loads(response_text)
+                        
                         
                     except Exception as e:
                         print(f"Failed to get LLM response: {e}")
                         break
 
-
-                    if response_text.startswith("FUNCTION_CALL:"):
-                        _, function_info = response_text.split(":", 1)
+                    action_text = response_text["action"]
+                    # print(f"action_text : {action_text}")
+                    
+                    if action_text.startswith("FUNCTION_CALL:"):
+                        _, function_info = action_text.split(":", 1)
                         parts = [p.strip() for p in function_info.split("|")]
                         func_name, params = parts[0], parts[1:]
                         
